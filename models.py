@@ -26,8 +26,9 @@ class Period(SQLModel, table=True):
 
 
 @event.listens_for(Period, "before_insert")
+@event.listens_for(Period, "before_update")
 def calculate_total_days(mapper, connection, target: Period):
     if target.start_date and target.end_date:
-        target.total_days = (target.end_date - target.start_date).days
+        target.total_days = (target.end_date - target.start_date).days + 1
     else:
         target.total_days = None
