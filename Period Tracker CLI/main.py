@@ -1,14 +1,13 @@
 from datetime import date
 from math import ceil
 
+from db import engine
+from models import Period
 from rich import print as rprint
 from rich.console import Console
 from rich.table import Table
 from sqlmodel import Session, select
 from typer import Option, Typer
-
-from db import engine
-from models import Period
 
 app = Typer()
 console = Console()
