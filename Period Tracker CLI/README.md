@@ -1,6 +1,6 @@
 # Period Tracker CLI
 
-A command-line app for recording menstrual periods and viewing period history. It stores records in PostgreSQL and reports period lengths and time between records.
+A command-line app for recording menstrual periods and viewing period history. It stores records in PostgreSQL and reports period lengths and cycle lengths.
 
 ## Setup
 
@@ -47,4 +47,4 @@ Commands prompt for any required values. Dates use `YYYY-MM-DD` format.
 
 For example, to add a record, run `uv run python main.py add-record` and enter the prompted start date and optional end date.
 
-The app calculates the inclusive period length when both dates are available. Ongoing records have no calculated length yet. Reports show the average recorded period length and, when there is more than one record, the average days between periods. Gaps longer than 50 days are marked in the report.
+The app calculates the inclusive period length when both dates are available. Ongoing records have no calculated length yet. Reports show the average recorded period length and, when there is more than one record, the average cycle length (calculated as the difference of days from the start date of the previous period to the date before the start date of the current period). Gaps longer than 50 days are excluded from the cycle average and marked in the report.
