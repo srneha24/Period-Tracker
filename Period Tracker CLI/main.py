@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 from math import ceil
 
 from db import engine
@@ -27,32 +27,36 @@ def print_results(results):
     table.add_column("Start Date", justify="center", style="cyan")
     table.add_column("End Date", justify="center", style="green")
     table.add_column("Period Length", justify="center", style="red")
-    table.add_column("Days Since Last Period", justify="center", style="purple")
+    table.add_column("Cycle Length", justify="center", style="purple")
 
     total_days = 0
-    last_period_end_date = None
-    total_days_diff_since_last_period = 0
+    last_period_start_date = None
+    total_cycle_days = 0
+    cycle_count = 0
     for period in results:
         total_days += period.total_days if period.total_days is not None else 0
-        if last_period_end_date:
-            # Check if the current period's start date is more than 50 days after the last period's end date
-            # to indicate a gap in the records
-            if (period.start_date - last_period_end_date).days > 50:
-                days_since_last_period = f">50 days gap in records ({(period.start_date - last_period_end_date).days} days)"
+        if last_period_start_date:
+            cycle_days = (
+                (period.start_date - timedelta(days=1)) - last_period_start_date
+            ).days
+            # Check if the cycle length is more than 50 days to indicate a gap in the records
+            if cycle_days > 50:
+                cycle_length = f">50 days gap in records ({cycle_days} days)"
             else:
-                days_since_last_period = (period.start_date - last_period_end_date).days
-                total_days_diff_since_last_period += days_since_last_period
+                cycle_length = cycle_days
+                total_cycle_days += cycle_days
+                cycle_count += 1
         else:
-            days_since_last_period = "First record"
+            cycle_length = "First record"
 
-        last_period_end_date = period.end_date
+        last_period_start_date = period.start_date
 
         table.add_row(
             str(period.id),
             period.start_date.strftime("%d %B %Y"),
             period.end_date.strftime("%d %B %Y") if period.end_date else "Ongoing",
             str(period.total_days) if period.total_days is not None else "N/A",
-            str(days_since_last_period),
+            str(cycle_length),
         )
 
     console.print(table)
@@ -66,14 +70,13 @@ def print_results(results):
         f"[red italic]Average Period Length[/red italic] 🩸: [cyan]{average_length}[/cyan]"
     )
 
-    average_days_between_periods = (
-        str(ceil(total_days_diff_since_last_period / (len(results) - 1)))
-        + " [bold]days[/bold]"
-        if len(results) > 1
+    average_cycle_length = (
+        str(ceil(total_cycle_days / cycle_count)) + " [bold]days[/bold]"
+        if cycle_count > 0
         else "No data available"
     )
     rprint(
-        f"[red italic]Average Days Between Periods[/red italic] 🩸: [cyan]{average_days_between_periods}[/cyan]"
+        f"[red italic]Average Cycle Length[/red italic] 🩸: [cyan]{average_cycle_length}[/cyan]"
     )
 
 

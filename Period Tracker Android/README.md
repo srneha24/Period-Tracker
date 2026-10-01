@@ -15,7 +15,7 @@ Use `npm run android` to start Expo with the Android target. Expo Go runs the ap
 - Add periods by choosing a start date and optional end date in the native date picker.
 - Update and delete saved periods.
 - See the inclusive length of each completed period.
-- Review all periods, the three most recent records, or records by start year.
+- Review all periods, the five most recent records, or records by start year.
 - View average completed period length and average days from a period's end to the next period's start. Gaps over 50 days are excluded from the gap average and noted in the history guidance.
 - Keep records in the device's `period-tracker.db` SQLite database.
 - Open Settings from the top-right gear to set a name and choose System, Light, or Dark appearance. System follows the device setting; both preferences are saved locally.
