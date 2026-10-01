@@ -1,0 +1,23 @@
+{
+  "expo": {
+    "name": "Period Tracker",
+    "slug": "period-tracker-android",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "android": {
+      "package": "com.periodtracker.mobile"
+    },
+    "plugins": [
+      "expo-sqlite",
+      "expo-system-ui",
+      "@react-native-community/datetimepicker",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#fff8f6"
+        }
+      ]
+    ]
+  }
+}
