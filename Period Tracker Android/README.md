@@ -21,3 +21,27 @@ Use `npm run android` to start Expo with the Android target. Expo Go runs the ap
 - Open Settings from the top-right gear to set a name and choose System, Light, or Dark appearance. System follows the device setting; both preferences are saved locally.
 
 The date picker is provided by Expo's supported native date picker package, so it works in Expo Go.
+
+## Build APK
+
+Make sure you have the following installed
+
+- JDK 17
+- Android CLI
+
+If you do not have the platform tools already installed, run the following command to install them. The version you require for your Gradle may be different than the versions set in the following example
+
+```powershell
+android sdk install "platforms;android-36" "build-tools;36.0.0"
+```
+
+Run the following commands to build the APK
+
+```powershell
+npx expo prebuild --platform android --clean
+Set-Content android\local.properties "sdk.dir=C:\\Users\\<USERNAME>\\AppData\\Local\\Android\\Sdk"
+cd android
+.\gradlew.bat assembleRelease
+```
+
+The APK will be in `.\android\app\build\outputs\apk\release\app-release.apk`.
