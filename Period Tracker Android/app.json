@@ -2,6 +2,7 @@
   "expo": {
     "name": "Period Tracker",
     "slug": "period-tracker-android",
+    "icon": "./assets/icon.png",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
