@@ -44,6 +44,7 @@ Commands prompt for any required values. Dates use `YYYY-MM-DD` format.
 | `update-end-date` | Set or change a record's end date by its ID. |
 | `show-for-year` | Show records whose start date falls within the selected year. |
 | `show-recent` | Show the requested number of most recent records, displayed oldest to newest. |
+| `next-period-estimate` | Estimate the next start date from at least three and up to six consecutive cycles ending at the latest record, when its start was within 45 days. |
 
 For example, to add a record, run `uv run python main.py add-record` and enter the prompted start date and optional end date.
 

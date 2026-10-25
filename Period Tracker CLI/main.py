@@ -1,4 +1,5 @@
-from datetime import date
+from datetime import date, timedelta
+from itertools import pairwise
 from math import ceil
 
 from db import engine
@@ -76,6 +77,58 @@ def print_results(results):
     )
 
 
+def next_period_date_prediction() -> date | None:
+    minimum_cycles_to_consider = 3
+    maximum_cycles_to_consider = 6
+    number_of_periods_to_consider = maximum_cycles_to_consider + 1
+
+    with Session(engine) as session:
+        statement = (
+            select(Period)
+            .order_by(Period.start_date.desc())
+            .limit(number_of_periods_to_consider)
+        )
+        results = session.exec(statement).all()
+
+    if len(results) < minimum_cycles_to_consider + 1:
+        rprint(
+            "❌ [red]At least three consecutive cycles are needed to estimate the next period. Please add more records.[/red]"
+        )
+        return
+
+    latest_period = results[0]
+    days_since_last_start = (date.today() - latest_period.start_date).days
+    if not 0 <= days_since_last_start <= 45:
+        rprint(
+            "❌ [red]The latest period must have started within the last 45 days to estimate the next period.[/red]"
+        )
+        return
+
+    recent_periods = sorted(results, key=lambda period: period.start_date)
+    consecutive_cycle_lengths = []
+    for current_period, next_period in reversed(list(pairwise(recent_periods))):
+        start_date_gap = (next_period.start_date - current_period.start_date).days
+        if start_date_gap > 45:
+            break
+        consecutive_cycle_lengths.append(start_date_gap - 1)
+
+    if len(consecutive_cycle_lengths) < minimum_cycles_to_consider:
+        rprint(
+            "❌ [red]At least three consecutive cycles, each no more than 45 days apart, are needed to estimate the next period.[/red]"
+        )
+        return
+
+    cycle_lengths_to_average = consecutive_cycle_lengths[:maximum_cycles_to_consider]
+    average_cycle_length = ceil(
+        sum(cycle_lengths_to_average) / len(cycle_lengths_to_average)
+    )
+    estimated_next_start = latest_period.start_date + timedelta(
+        days=average_cycle_length + 1
+    )
+
+    return estimated_next_start
+
+
 @app.command()
 def hello():
     rprint("🩸 [bold red]Welcome to the Period Tracker CLI![/bold red] 🩸")
@@ -144,6 +197,22 @@ def update_end_date(
 
 
 @app.command()
+def delete_record(
+    period_id: int = Option(..., prompt="Enter the ID of the period to delete")
+):
+    with Session(engine) as session:
+        period = session.get(Period, period_id)
+        if not period:
+            rprint(f"❌ [red]No period found with ID {period_id}.[/red]")
+            return
+
+        session.delete(period)
+        session.commit()
+
+    rprint("✅️ [green]Period deleted successfully![/green]")
+
+
+@app.command()
 def show_for_year(
     year: int = Option(..., prompt="Enter the year (YYYY) to filter records")
 ):
@@ -179,6 +248,34 @@ def show_recent(
         return
 
     print_results(list(reversed(results)))
+
+
+@app.command()
+def next_period_estimate():
+    estimated_next_start = next_period_date_prediction()
+
+    if estimated_next_start is None:
+        return
+
+    rprint(
+        f"[italic red]Estimated Next Period Start Date[/italic red] 🩸: [cyan]{estimated_next_start.strftime('%d %B %Y')}[/cyan]"
+    )
+
+
+@app.command()
+def next_ovulation_estimate():
+    estimated_next_start = next_period_date_prediction()
+    
+    if estimated_next_start:
+        estimated_next_ovulation = estimated_next_start - timedelta(days=14)
+        rprint(
+            f"[italic red]Estimated Next Ovulation Date[/italic red] 🩸: [cyan]{estimated_next_ovulation.strftime('%d %B %Y')}[/cyan]"
+        )
+
+        fertile_window_start = estimated_next_ovulation - timedelta(days=5)
+        rprint(
+            f"[italic red]Estimated Fertile Window[/italic red] 🩸: [cyan]{fertile_window_start.strftime('%d %B %Y')}[/cyan] to [cyan]{estimated_next_ovulation.strftime('%d %B %Y')}[/cyan]"
+        )
 
 
 if __name__ == "__main__":
