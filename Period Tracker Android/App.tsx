@@ -93,19 +93,102 @@ function buildMonthDays(month: Date): CalendarDayInfo[][] {
   return rows;
 }
 
+type PredictionResult = {
+  nextPeriod: string | null;
+  nextOvulation: string | null;
+  reason: string | null;
+};
+
+function calculatePredictions(periods: Period[]): PredictionResult {
+  const minimumCycles = 3;
+  const maximumCycles = 6;
+  const numberOfPeriodsToConsider = maximumCycles + 1;
+
+  const sortedDesc = [...periods].sort(
+    (a, b) => b.start_date.localeCompare(a.start_date) || b.id - a.id
+  );
+  const results = sortedDesc.slice(0, numberOfPeriodsToConsider);
+
+  if (results.length < minimumCycles + 1) {
+    return {
+      nextPeriod: null,
+      nextOvulation: null,
+      reason:
+        'At least 3 consecutive cycles are needed to estimate predictions.',
+    };
+  }
+
+  const latestPeriod = results[0];
+  const daysSinceLastStart = days(latestPeriod.start_date, today);
+
+  if (daysSinceLastStart < 0 || daysSinceLastStart > 45) {
+    return {
+      nextPeriod: null,
+      nextOvulation: null,
+      reason:
+        'The latest period must have started within the last 45 days.',
+    };
+  }
+
+  const recentPeriods = [...results].sort(
+    (a, b) => a.start_date.localeCompare(b.start_date) || a.id - b.id
+  );
+
+  const consecutiveCycleLengths: number[] = [];
+  for (let i = recentPeriods.length - 2; i >= 0; i--) {
+    const currentPeriod = recentPeriods[i];
+    const nextPeriod = recentPeriods[i + 1];
+    const startDateGap = days(currentPeriod.start_date, nextPeriod.start_date);
+    if (startDateGap > 45) {
+      break;
+    }
+    consecutiveCycleLengths.push(startDateGap - 1);
+  }
+
+  if (consecutiveCycleLengths.length < minimumCycles) {
+    return {
+      nextPeriod: null,
+      nextOvulation: null,
+      reason:
+        'At least 3 consecutive cycles, each no more than 45 days apart, are needed.',
+    };
+  }
+
+  const cycleLengthsToAverage = consecutiveCycleLengths.slice(0, maximumCycles);
+  const averageCycleLength = Math.ceil(
+    cycleLengthsToAverage.reduce((a, b) => a + b, 0) /
+    cycleLengthsToAverage.length
+  );
+
+  const latestStartMs = parseDate(latestPeriod.start_date).getTime();
+  const nextPeriodMs = latestStartMs + (averageCycleLength + 1) * 86400000;
+  const nextOvulationMs = nextPeriodMs - 14 * 86400000;
+
+  return {
+    nextPeriod: formatDate(new Date(nextPeriodMs)),
+    nextOvulation: formatDate(new Date(nextOvulationMs)),
+    reason: null,
+  };
+}
+
 function TrackerContent() {
   const db = useSQLiteContext();
   const [periods, setPeriods] = useState<Period[]>([]);
   const [tab, setTab] = useState<Tab>('overview');
-  const [start, setStart] = useState(today);
-  const [end, setEnd] = useState('');
-  const [editing, setEditing] = useState<number | null>(null);
-  const [filter, setFilter] = useState('All');
+  const [editingRecord, setEditingRecord] = useState<Period | null>(null);
+  const [editStart, setEditStart] = useState(today);
+  const [editEnd, setEditEnd] = useState('');
   const [picker, setPicker] = useState<'start' | 'end' | null>(null);
-  const [calendarMonth, setCalendarMonth] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
-  const [calendarEditor, setCalendarEditor] = useState(false);
+  const [filter, setFilter] = useState('All');
+  const [calendarMonth, setCalendarMonth] = useState(
+    new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+  );
   const [confirmDate, setConfirmDate] = useState<string | null>(null);
-  const [rangeConfirmation, setRangeConfirmation] = useState<{ periodId?: number; start: string; end: string } | null>(null);
+  const [rangeConfirmation, setRangeConfirmation] = useState<{
+    periodId?: number;
+    start: string;
+    end: string;
+  } | null>(null);
   const [rangeDraft, setRangeDraft] = useState<RangeDraft | null>(null);
   const [scrollEnabled, setScrollEnabled] = useState(true);
   const [themePreference, setThemePreference] = useState<ThemePreference>('system');
@@ -157,45 +240,154 @@ function TrackerContent() {
   const recentPeriodAverage = useMemo(() => average(recentChain.filter(p => p.end_date).map(p => p.total_days ?? days(p.start_date, p.end_date!) + 1)), [recentChain]);
   const recentCycleValues = useMemo(() => recentChain.slice(0, -1).map((p, i) => days(p.start_date, recentChain[i + 1].start_date) - 1), [recentChain]);
   const recentCycleAverage = useMemo(() => average(recentCycleValues), [recentCycleValues]);
+  const predictions = useMemo(() => calculatePredictions(periods), [periods]);
 
-  const save = () => {
-    if (end && end < start) return Alert.alert('Check your dates', 'The end date must be on or after the start date.');
-    const total = end ? days(start, end) + 1 : null;
-    if (editing !== null) db.runSync('UPDATE periods SET start_date = ?, end_date = ?, total_days = ? WHERE id = ?', start, end || null, total, editing);
-    else db.runSync('INSERT INTO periods (start_date, end_date, total_days) VALUES (?, ?, ?)', start, end || null, total);
-    setEditing(null);
-    setEnd('');
-    setCalendarEditor(false);
-    refresh();
-  };
+  const todayEmoji = useMemo(() => {
+    const isInActivePeriod = periods.some(
+      p => today >= p.start_date && today <= (p.end_date ?? today)
+    );
+    if (isInActivePeriod) {
+      return '🩸';
+    }
 
-  const onDateValueChange = (_event: DateTimePickerChangeEvent, selectedDate: Date) => {
-    if (picker === 'start') setStart(formatDate(selectedDate));
-    if (picker === 'end') setEnd(formatDate(selectedDate));
-    if (Platform.OS === 'android') setPicker(null);
+    if (predictions.nextPeriod && predictions.nextOvulation) {
+      const periodDays = recentPeriodAverage ?? 5;
+      const nextPeriodStart = predictions.nextPeriod;
+      const nextPeriodEnd = formatDate(
+        new Date(
+          parseDate(nextPeriodStart).getTime() + (periodDays - 1) * 86400000
+        )
+      );
+
+      if (today >= nextPeriodStart && today <= nextPeriodEnd) {
+        return '🩸';
+      }
+
+      if (today === predictions.nextOvulation) {
+        return '🥚';
+      }
+
+      const fertileStart = formatDate(
+        new Date(parseDate(predictions.nextOvulation).getTime() - 5 * 86400000)
+      );
+      if (today >= fertileStart && today < predictions.nextOvulation) {
+        return '🌸';
+      }
+
+      return '😎';
+    }
+
+    return '🤷‍♀️';
+  }, [periods, predictions, recentPeriodAverage]);
+
+  const onDateValueChange = (
+    _event: DateTimePickerChangeEvent,
+    selectedDate: Date
+  ) => {
+    const dateStr = formatDate(selectedDate);
+    if (picker === 'start') {
+      setEditStart(dateStr);
+      if (editEnd && dateStr > editEnd) {
+        setEditEnd('');
+      }
+    } else if (picker === 'end') {
+      setEditEnd(dateStr);
+    }
+    if (Platform.OS === 'android') {
+      setPicker(null);
+    }
   };
 
   const chooseTheme = (value: ThemePreference) => {
-    db.runSync('INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', 'theme', value);
+    db.runSync(
+      'INSERT INTO app_settings (key, value) VALUES (?, ?) ' +
+        'ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+      'theme',
+      value
+    );
     setThemePreference(value);
   };
 
   const saveName = () => {
     const value = nameDraft.trim();
-    db.runSync('INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', 'name', value);
+    db.runSync(
+      'INSERT INTO app_settings (key, value) VALUES (?, ?) ' +
+        'ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+      'name',
+      value
+    );
     setDisplayName(value);
     setNameDraft(value);
     Keyboard.dismiss();
-    if (Platform.OS === 'android') ToastAndroid.show('Name saved', ToastAndroid.SHORT);
+    if (Platform.OS === 'android') {
+      ToastAndroid.show('Name saved', ToastAndroid.SHORT);
+    }
   };
 
   const edit = (p: Period) => {
-    setStart(p.start_date);
-    setEnd(p.end_date || '');
-    setEditing(p.id);
-    setTab('calendar');
-    setCalendarMonth(new Date(parseDate(p.start_date).getFullYear(), parseDate(p.start_date).getMonth(), 1));
-    setCalendarEditor(true);
+    setEditingRecord(p);
+    setEditStart(p.start_date);
+    setEditEnd(p.end_date || '');
+    setPicker(null);
+  };
+
+  const closeEditModal = () => {
+    setEditingRecord(null);
+    setPicker(null);
+  };
+
+  const saveEditModal = () => {
+    if (!editingRecord) return;
+    if (editStart > today) {
+      Alert.alert(
+        'Check your dates',
+        'A period start date cannot be in the future.'
+      );
+      return;
+    }
+    if (editEnd && editEnd < editStart) {
+      Alert.alert(
+        'Check your dates',
+        'The end date must be on or after the start date.'
+      );
+      return;
+    }
+    if (editEnd && editEnd > today) {
+      Alert.alert(
+        'Check your dates',
+        'A period end date cannot be in the future.'
+      );
+      return;
+    }
+
+    const hasOverlap = periods.some(p => {
+      if (p.id === editingRecord.id) return false;
+      const otherStart = p.start_date;
+      const otherEnd = p.end_date ?? today;
+      const thisStart = editStart;
+      const thisEnd = editEnd || today;
+      return thisStart <= otherEnd && otherStart <= thisEnd;
+    });
+
+    if (hasOverlap) {
+      Alert.alert(
+        'Conflicting dates',
+        'This period overlaps with another period in your records.'
+      );
+      return;
+    }
+
+    const total = editEnd ? days(editStart, editEnd) + 1 : null;
+    db.runSync(
+      'UPDATE periods SET start_date = ?, end_date = ?, total_days = ? WHERE id = ?',
+      editStart,
+      editEnd || null,
+      total,
+      editingRecord.id
+    );
+    setEditingRecord(null);
+    setPicker(null);
+    refresh();
   };
 
   const remove = (id: number) => {
@@ -252,8 +444,19 @@ function TrackerContent() {
       <ScrollView scrollEnabled={scrollEnabled} contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
         {tab === 'overview' && (
           <>
-            <Text style={s.greeting}>{displayName ? `Hi, ${displayName}` : 'Overview'}</Text>
-            <Text style={s.sub}>A clear view of your cycle patterns.</Text>
+            <View style={s.greetingRow}>
+              <Text style={s.greeting} numberOfLines={1}>
+                {displayName ? `Hi, ${displayName}` : 'Hello there!'}
+              </Text>
+              <View
+                style={s.todayBadge}
+                accessible
+                accessibilityRole="text"
+                accessibilityLabel={`Today: ${todayEmoji}`}
+              >
+                <Text style={s.todayBadgeText}>Today: {todayEmoji}</Text>
+              </View>
+            </View>
             <Text style={s.section}>Recent</Text>
             <Text style={s.helper}>Up to 6 latest consecutive cycles, ending at the latest record.</Text>
             <View style={s.stats}>
@@ -267,6 +470,14 @@ function TrackerContent() {
                 <Text style={s.statNum}>{recentCycleAverage ? `${recentCycleAverage} days` : '—'}</Text>
                 <Text style={s.statLabel}>AVG. CYCLE</Text>
               </View>
+            </View>
+            <Text style={s.section}>Predictions</Text>
+            <Text style={s.helper}>
+              {predictions.reason ?? 'Estimated from your latest consecutive cycles.'}
+            </Text>
+            <View style={s.stats}>
+              <NextPeriodPredictionCard prediction={predictions.nextPeriod} s={s} />
+              <NextOvulationPredictionCard prediction={predictions.nextOvulation} s={s} />
             </View>
             <Text style={s.section}>Historical</Text>
             <Text style={s.helper}>Based on every record in your database.</Text>
@@ -282,21 +493,17 @@ function TrackerContent() {
                 <Text style={s.statLabel}>AVG. CYCLE</Text>
               </View>
             </View>
-            <View style={s.callout}>
-              <Text style={s.calloutTitle}>Your records stay on this device</Text>
-              <Text style={s.calloutText}>Tap Calendar to browse dates or add a period.</Text>
-            </View>
           </>
         )}
         {tab === 'calendar' && (
           <>
             <Text style={s.greeting}>Calendar</Text>
-            <Text style={s.sub}>Your saved period dates at a glance.</Text>
+            <Text style={s.sub}>Your cycles at a glance.</Text>
             <CalendarGrid
               month={calendarMonth}
               onMonthChange={setCalendarMonth}
               periods={periods}
-              selected={calendarEditor ? start : ''}
+              selected={confirmDate ?? ''}
               rangeDraft={rangeDraft}
               onRangeDraftChange={setRangeDraft}
               s={s}
@@ -306,60 +513,29 @@ function TrackerContent() {
               setIsScrollingAllowed={setScrollEnabled}
             />
             <View style={s.legend}>
-              <Text style={s.drop}>🩸</Text>
-              <Text style={s.helper}>Period dates</Text>
-            </View>
-            <Text style={s.gestureHelp}>Tap an available date to log a period start. Drag from start to end date to save the full period record.</Text>
-            {calendarEditor && (
-              <View style={s.card}>
-                <Text style={s.section}>{editing !== null ? 'Edit period' : 'New period'}</Text>
-                <Text style={s.label}>START DATE</Text>
-                <TouchableOpacity style={s.dateButton} onPress={() => setPicker('start')}>
-                  <Text style={s.dateText}>📅  {pretty(start)}</Text>
-                  <Text style={s.dateHint}>Change</Text>
-                </TouchableOpacity>
-                <Text style={s.label}>END DATE <Text style={s.optional}>· OPTIONAL</Text></Text>
-                <TouchableOpacity style={s.dateButton} onPress={() => setPicker('end')}>
-                  <Text style={[s.dateText, !end && s.datePlaceholder]}>{end ? `📅  ${pretty(end)}` : 'Choose an end date'}</Text>
-                  {end ? (
-                    <TouchableOpacity onPress={() => setEnd('')}>
-                      <Text style={s.clearDate}>Clear</Text>
-                    </TouchableOpacity>
-                  ) : (
-                    <Text style={s.dateHint}>Optional</Text>
-                  )}
-                </TouchableOpacity>
-                {picker && (
-                  <DateTimePicker
-                    value={picker === 'start' ? parseDate(start) : end ? parseDate(end) : parseDate(start)}
-                    mode="date"
-                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                    maximumDate={new Date()}
-                    minimumDate={picker === 'end' ? parseDate(start) : undefined}
-                    themeVariant={isDark ? 'dark' : 'light'}
-                    onValueChange={onDateValueChange}
-                    onDismiss={() => Platform.OS === 'android' && setPicker(null)}
-                  />
-                )}
-                {picker && Platform.OS === 'ios' && (
-                  <TouchableOpacity style={s.pickerDone} onPress={() => setPicker(null)}>
-                    <Text style={s.pickerDoneText}>Done</Text>
-                  </TouchableOpacity>
-                )}
-                <TouchableOpacity style={s.button} onPress={save}>
-                  <Text style={s.buttonText}>{editing !== null ? 'Save changes' : 'Save period'}  →</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => { setCalendarEditor(false); setEditing(null); }}>
-                  <Text style={s.cancel}>Cancel</Text>
-                </TouchableOpacity>
+              <View style={s.legendItem}>
+                <Text style={s.drop}>🩸</Text>
+                <Text style={s.legendText}>Period</Text>
               </View>
-            )}
+              <View style={s.legendItem}>
+                <Text style={s.drop}>🌸</Text>
+                <Text style={s.legendText}>Fertile</Text>
+              </View>
+              <View style={s.legendItem}>
+                <Text style={s.drop}>🥚</Text>
+                <Text style={s.legendText}>Ovulation</Text>
+              </View>
+            </View>
+            <Text style={s.gestureHelp}>
+              Tap an available date to log a period start. Drag from start to
+              end date to save the full period record.
+            </Text>
           </>
         )}
         {tab === 'history' && (
           <>
             <Text style={s.greeting}>Your history</Text>
-            <Text style={s.sub}>All the notes you’ve logged, in one place.</Text>
+            <Text style={s.sub}>All the dates you’ve logged, in one place.</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.filters}>
               {years.map(y => (
                 <TouchableOpacity key={y} style={[s.chip, filter === y && s.chipOn]} onPress={() => setFilter(y)}>
@@ -375,10 +551,6 @@ function TrackerContent() {
               <PeriodCard key={p.id} p={p} nextPeriod={nextPeriodById.get(p.id) ?? null} s={s} onEdit={edit} onDelete={remove} />
             ))}
             {!shown.length && <Text style={s.empty}>No periods to show yet. Start by tapping a date in Calendar.</Text>}
-            <View style={s.note}>
-              <Text style={s.noteTitle}>A note about your averages</Text>
-              <Text style={s.noteText}>Average period length uses completed records. Cycle length counts through the day before the next start. Intervals longer than 45 days are shown as gaps and excluded from cycle averages.</Text>
-            </View>
           </>
         )}
         {tab === 'settings' && (
@@ -400,7 +572,7 @@ function TrackerContent() {
                 style={s.nameInput}
               />
               <TouchableOpacity style={s.button} onPress={saveName}>
-                <Text style={s.buttonText}>Save name</Text>
+                <Text style={s.buttonText}>Save Name</Text>
               </TouchableOpacity>
             </View>
             <View style={s.appearance}>
@@ -442,27 +614,171 @@ function TrackerContent() {
           </View>
         </View>
       </Modal>
-      <Modal visible={rangeConfirmation !== null} transparent animationType="fade" onRequestClose={() => { setRangeConfirmation(null); setRangeDraft(null); }}>
+      <Modal
+        visible={rangeConfirmation !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setRangeConfirmation(null);
+          setRangeDraft(null);
+        }}
+      >
         <View style={s.modalBackdrop}>
           <View style={s.confirmModal}>
             <Text style={s.confirmTitle}>Save period record?</Text>
-            <Text style={s.confirmHelp}>Start date: <Text style={s.confirmDate}>{rangeConfirmation ? pretty(rangeConfirmation.start) : ''}</Text></Text>
-            <Text style={s.confirmHelp}>End date: <Text style={s.confirmDate}>{rangeConfirmation ? pretty(rangeConfirmation.end) : ''}</Text></Text>
+            <Text style={s.confirmHelp}>
+              Start date:{' '}
+              <Text style={s.confirmDate}>
+                {rangeConfirmation ? pretty(rangeConfirmation.start) : ''}
+              </Text>
+            </Text>
+            <Text style={s.confirmHelp}>
+              End date:{' '}
+              <Text style={s.confirmDate}>
+                {rangeConfirmation ? pretty(rangeConfirmation.end) : ''}
+              </Text>
+            </Text>
             {rangeConfirmation && (
               <Text style={s.confirmHelp}>
-                Duration: <Text style={s.confirmDate}>{days(rangeConfirmation.start, rangeConfirmation.end) + 1} days</Text>
+                Duration:{' '}
+                <Text style={s.confirmDate}>
+                  {days(rangeConfirmation.start, rangeConfirmation.end) + 1} days
+                </Text>
               </Text>
             )}
             <View style={s.confirmActions}>
-              <TouchableOpacity accessibilityRole="button" style={s.modalCancel} onPress={() => { setRangeConfirmation(null); setRangeDraft(null); }}>
+              <TouchableOpacity
+                accessibilityRole="button"
+                style={s.modalCancel}
+                onPress={() => {
+                  setRangeConfirmation(null);
+                  setRangeDraft(null);
+                }}
+              >
                 <Text style={s.modalCancelText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 accessibilityRole="button"
                 style={s.modalConfirm}
-                onPress={() => rangeConfirmation && saveCalendarRange(rangeConfirmation.periodId, rangeConfirmation.start, rangeConfirmation.end)}
+                onPress={() =>
+                  rangeConfirmation &&
+                  saveCalendarRange(
+                    rangeConfirmation.periodId,
+                    rangeConfirmation.start,
+                    rangeConfirmation.end
+                  )
+                }
               >
                 <Text style={s.modalConfirmText}>Save record</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+      <Modal
+        visible={editingRecord !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={closeEditModal}
+      >
+        <View style={s.modalBackdrop}>
+          <View style={s.confirmModal}>
+            <Text style={s.confirmTitle}>Edit period</Text>
+            <Text style={s.confirmHelp}>
+              Update the start or end date for this record.
+            </Text>
+
+            <Text style={s.label}>START DATE</Text>
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel={`Start date: ${pretty(editStart)}`}
+              style={s.dateButton}
+              onPress={() => setPicker('start')}
+            >
+              <Text style={s.dateText}>📅  {pretty(editStart)}</Text>
+              <Text style={s.dateHint}>Change</Text>
+            </TouchableOpacity>
+
+            <Text style={s.label}>
+              END DATE <Text style={s.optional}>· OPTIONAL</Text>
+            </Text>
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel={
+                editEnd ? `End date: ${pretty(editEnd)}` : 'Choose an end date'
+              }
+              style={s.dateButton}
+              onPress={() => setPicker('end')}
+            >
+              <Text style={[s.dateText, !editEnd && s.datePlaceholder]}>
+                {editEnd ? `📅  ${pretty(editEnd)}` : 'Choose an end date'}
+              </Text>
+              {editEnd ? (
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear end date"
+                  onPress={() => setEditEnd('')}
+                >
+                  <Text style={s.clearDate}>Clear</Text>
+                </TouchableOpacity>
+              ) : (
+                <Text style={s.dateHint}>Optional</Text>
+              )}
+            </TouchableOpacity>
+
+            {picker && (
+              <DateTimePicker
+                value={
+                  picker === 'start'
+                    ? parseDate(editStart)
+                    : editEnd
+                      ? parseDate(editEnd)
+                      : parseDate(editStart)
+                }
+                mode="date"
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                maximumDate={new Date()}
+                minimumDate={
+                  picker === 'end' ? parseDate(editStart) : undefined
+                }
+                themeVariant={isDark ? 'dark' : 'light'}
+                onValueChange={onDateValueChange}
+                onDismiss={() => Platform.OS === 'android' && setPicker(null)}
+              />
+            )}
+            {picker && Platform.OS === 'ios' && (
+              <TouchableOpacity
+                accessibilityRole="button"
+                style={s.pickerDone}
+                onPress={() => setPicker(null)}
+              >
+                <Text style={s.pickerDoneText}>Done</Text>
+              </TouchableOpacity>
+            )}
+
+            <View style={s.editDurationRow}>
+              <Text style={s.editDurationLabel}>Duration</Text>
+              <Text style={s.editDurationValue}>
+                {editEnd
+                  ? `${days(editStart, editEnd) + 1} days`
+                  : 'Ongoing'}
+              </Text>
+            </View>
+
+            <View style={s.confirmActions}>
+              <TouchableOpacity
+                accessibilityRole="button"
+                style={s.modalCancel}
+                onPress={closeEditModal}
+              >
+                <Text style={s.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                accessibilityRole="button"
+                style={s.modalConfirm}
+                onPress={saveEditModal}
+              >
+                <Text style={s.modalConfirmText}>Save changes</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -568,6 +884,43 @@ function CalendarGrid({
   } | null>(null);
 
   const isDraggingRef = useRef(false);
+
+  const cycleFertilityData = useMemo(() => {
+    const chronological = [...periods].sort(
+      (a, b) => a.start_date.localeCompare(b.start_date) || a.id - b.id
+    );
+    const ovulationDates = new Set<string>();
+    const fertilityDates = new Set<string>();
+    const windowRanges: Array<{ start: string; end: string }> = [];
+
+    for (let i = 0; i < chronological.length - 1; i++) {
+      const period = chronological[i];
+      const nextPeriod = chronological[i + 1];
+
+      if (!period.end_date) continue;
+
+      const gap = days(period.start_date, nextPeriod.start_date);
+      if (gap > 45) continue;
+
+      const nextStartMs = parseDate(nextPeriod.start_date).getTime();
+      const ovulationMs = nextStartMs - 14 * 86400000;
+      const ovulationDate = formatDate(new Date(ovulationMs));
+
+      ovulationDates.add(ovulationDate);
+
+      for (let offset = 5; offset >= 1; offset--) {
+        const fDate = formatDate(new Date(ovulationMs - offset * 86400000));
+        fertilityDates.add(fDate);
+      }
+
+      const fertileStartDate = formatDate(
+        new Date(ovulationMs - 5 * 86400000)
+      );
+      windowRanges.push({ start: fertileStartDate, end: ovulationDate });
+    }
+
+    return { ovulationDates, fertilityDates, windowRanges };
+  }, [periods]);
 
   const getCellFromLocation = useCallback((x: number, y: number): CalendarDayInfo | null => {
     const width = gridWidthRef.current || 350;
@@ -789,6 +1142,23 @@ function CalendarGrid({
               const isDraftEnd = rangeDraft ? cell.dateString === rangeDraft.end : false;
               const isDraftSingle = rangeDraft ? rangeDraft.start === rangeDraft.end : false;
 
+              const fertileWindow =
+                !isInPeriod && !isInDraft
+                  ? cycleFertilityData.windowRanges.find(
+                    w => cell.dateString >= w.start && cell.dateString <= w.end
+                  )
+                  : null;
+              const isOvulation = Boolean(
+                !isInPeriod &&
+                !isInDraft &&
+                cycleFertilityData.ovulationDates.has(cell.dateString)
+              );
+              const isFertilityDate = Boolean(
+                !isInPeriod &&
+                !isInDraft &&
+                cycleFertilityData.fertilityDates.has(cell.dateString)
+              );
+
               const isToday = cell.dateString === today;
               const isSelected = selected === cell.dateString;
               const isFuture = cell.dateString > today;
@@ -812,12 +1182,29 @@ function CalendarGrid({
                 else if (cell.col === 6) capStyle = s.rangeCapRight;
 
                 rangeBarComponent = <View pointerEvents="none" style={[s.rangeBar, s.rangeBarDraft, capStyle]} />;
+              } else if (fertileWindow) {
+                let capStyle: StyleProp<ViewStyle> = s.rangeBarMiddle;
+                const isWindowStart = cell.dateString === fertileWindow.start;
+                const isWindowEnd = cell.dateString === fertileWindow.end;
+                if (isWindowStart && isWindowEnd) capStyle = s.rangeSingle;
+                else if (isWindowStart) capStyle = cell.col === 6 ? s.rangeSingle : s.rangeCapLeft;
+                else if (isWindowEnd) capStyle = cell.col === 0 ? s.rangeSingle : s.rangeCapRight;
+                else if (cell.col === 0) capStyle = s.rangeCapLeft;
+                else if (cell.col === 6) capStyle = s.rangeCapRight;
+
+                rangeBarComponent = <View pointerEvents="none" style={[s.rangeBar, s.rangeBarFertile, capStyle]} />;
               }
 
               return (
                 <View key={cell.dateString} style={s.gridCell} pointerEvents="none">
                   {rangeBarComponent}
-                  <View style={[s.cellInner, isSelected && s.cellSelected]}>
+                  <View
+                    style={[
+                      s.cellInner,
+                      isSelected && s.cellSelected,
+                      isOvulation && s.cellOvulation,
+                    ]}
+                  >
                     <Text
                       style={[
                         s.dayNumber,
@@ -825,6 +1212,7 @@ function CalendarGrid({
                         isToday && cell.isCurrentMonth && s.dayNumberToday,
                         isInPeriod && s.dayNumberPeriod,
                         isInDraft && s.dayNumberDraft,
+                        (isFertilityDate || isOvulation) && s.dayNumberFertile,
                         isFuture && !isInPeriod && s.dayNumberFuture,
                       ]}
                     >
@@ -833,9 +1221,17 @@ function CalendarGrid({
                     {(isInPeriod || isInDraft) && (
                       <Text style={s.dayDrop}>🩸</Text>
                     )}
-                    {!isInPeriod && !isInDraft && isToday && (
-                      <View style={s.todayDot} />
+                    {isOvulation && (
+                      <Text style={s.dayDrop}>🥚</Text>
                     )}
+                    {isFertilityDate && (
+                      <Text style={s.dayDrop}>🌸</Text>
+                    )}
+                    {!isInPeriod &&
+                      !isInDraft &&
+                      !isOvulation &&
+                      !isFertilityDate &&
+                      isToday && <View style={s.todayDot} />}
                   </View>
                 </View>
               );
@@ -847,18 +1243,49 @@ function CalendarGrid({
   );
 }
 
-function PeriodCard({ p, nextPeriod, s, onEdit, onDelete }: { p: Period; nextPeriod: Period | null; s: ReturnType<typeof makeStyles>; onEdit: (p: Period) => void; onDelete: (id: number) => void }) {
+type PeriodCardProps = {
+  p: Period;
+  nextPeriod: Period | null;
+  s: ReturnType<typeof makeStyles>;
+  onEdit: (p: Period) => void;
+  onDelete: (id: number) => void;
+};
+
+function PeriodCard({
+  p,
+  nextPeriod,
+  s,
+  onEdit,
+  onDelete,
+}: PeriodCardProps) {
   const gap = nextPeriod ? days(p.start_date, nextPeriod.start_date) : null;
-  const cycleText = !p.end_date || gap === null ? 'Ongoing or N/A' : gap > 45 ? `>45 days gap in records (${gap - 1} days)` : `${gap - 1} days cycle length`;
+  const cycleText =
+    !p.end_date || gap === null
+      ? 'Ongoing or N/A'
+      : gap > 45
+        ? `>45 days gap in records (${gap - 1} days)`
+        : `${gap - 1} days cycle length`;
+
   return (
     <View style={s.period}>
       <View style={s.periodIcon}>
         <Text style={{ fontSize: 18 }}>🩸</Text>
       </View>
       <View style={{ flex: 1 }}>
-        <Text style={s.periodDate}>{pretty(p.start_date)} – {p.end_date ? pretty(p.end_date) : 'Ongoing'}</Text>
-        <Text style={s.periodMeta}>{p.total_days !== null ? `${p.total_days} days` : 'In progress'}</Text>
-        <Text style={[s.periodGap, gap !== null && gap > 45 && s.periodGapWarning]}>{cycleText}</Text>
+        <Text style={s.periodDate}>
+          {pretty(p.start_date)} – {p.end_date ? pretty(p.end_date) : 'Ongoing'}
+        </Text>
+        <Text style={s.periodMeta}>
+          {p.total_days !== null ? `${p.total_days} days` : 'In progress'}
+        </Text>
+        <Text
+          style={[
+            s.periodGap,
+            gap !== null && gap > 45 && s.periodGapWarning,
+          ]}
+        >
+          {cycleText}
+        </Text>
       </View>
       <TouchableOpacity style={s.action} onPress={() => onEdit(p)}>
         <Text style={s.actionText}>Edit</Text>
@@ -866,6 +1293,61 @@ function PeriodCard({ p, nextPeriod, s, onEdit, onDelete }: { p: Period; nextPer
       <TouchableOpacity style={s.trash} onPress={() => onDelete(p.id)}>
         <Text style={s.trashText}>×</Text>
       </TouchableOpacity>
+    </View>
+  );
+}
+
+type PredictionCardProps = {
+  prediction: string | null;
+  s: ReturnType<typeof makeStyles>;
+};
+
+function NextPeriodPredictionCard({ prediction, s }: PredictionCardProps) {
+  const daysAway = prediction ? days(today, prediction) : null;
+  const badge =
+    daysAway !== null
+      ? daysAway > 0
+        ? `In ${daysAway}d`
+        : daysAway === 0
+          ? 'Today'
+          : `${Math.abs(daysAway)}d ago`
+      : null;
+
+  return (
+    <View style={s.stat}>
+      <View style={s.statHeaderRow}>
+        <Text style={s.statIcon}>🩸</Text>
+        {badge && <Text style={s.predictionBadge}>{badge}</Text>}
+      </View>
+      <Text style={prediction ? s.statDateNum : s.statNum}>
+        {prediction ? pretty(prediction) : '—'}
+      </Text>
+      <Text style={s.statLabel}>NEXT PERIOD</Text>
+    </View>
+  );
+}
+
+function NextOvulationPredictionCard({ prediction, s }: PredictionCardProps) {
+  const daysAway = prediction ? days(today, prediction) : null;
+  const badge =
+    daysAway !== null
+      ? daysAway > 0
+        ? `In ${daysAway}d`
+        : daysAway === 0
+          ? 'Today'
+          : `${Math.abs(daysAway)}d ago`
+      : null;
+
+  return (
+    <View style={s.stat}>
+      <View style={s.statHeaderRow}>
+        <Text style={s.statIcon}>🥚</Text>
+        {badge && <Text style={s.predictionBadge}>{badge}</Text>}
+      </View>
+      <Text style={prediction ? s.statDateNum : s.statNum}>
+        {prediction ? pretty(prediction) : '—'}
+      </Text>
+      <Text style={s.statLabel}>NEXT OVULATION</Text>
     </View>
   );
 }
@@ -879,14 +1361,20 @@ const makeStyles = (dark: boolean) => {
     eyebrow: { fontSize: 9, letterSpacing: 1.7, color: '#a18d88', fontWeight: '700' },
     brand: { fontSize: 25, fontWeight: '800', letterSpacing: -0.7, color: '#563f3d' },
     content: { paddingHorizontal: 21, paddingBottom: 26 },
-    greeting: { fontSize: 25, fontWeight: '700', letterSpacing: -0.5, color: '#483735', marginTop: 12 },
+    greetingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12, marginBottom: 4 },
+    greeting: { fontSize: 25, fontWeight: '700', letterSpacing: -0.5, color: '#483735', flex: 1, marginRight: 8 },
+    todayBadge: { backgroundColor: '#f5eae7', borderRadius: 12, paddingHorizontal: 11, paddingVertical: 6, borderWidth: 1, borderColor: '#f2e8e5', alignItems: 'center', justifyContent: 'center' },
+    todayBadgeText: { fontSize: 13, fontWeight: '700', color: '#503d3a' },
     sub: { fontSize: 13, color: '#968582', marginTop: 5, marginBottom: 13 },
     helper: { fontSize: 11, color: '#968582', marginTop: -7, marginBottom: 10 },
     section: { fontSize: 17, fontWeight: '700', color: '#503d3a', marginTop: 18, marginBottom: 12 },
     stats: { flexDirection: 'row', gap: 11, marginTop: 2 },
     stat: { flex: 1, backgroundColor: '#fff', borderRadius: 17, padding: 15, borderWidth: 1, borderColor: '#f2e8e5' },
+    statHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    predictionBadge: { fontSize: 10, fontWeight: '700', color: '#660000', backgroundColor: '#f5eae7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
     statIcon: { fontSize: 18 },
     statNum: { fontSize: 20, fontWeight: '700', color: '#563f3d', marginTop: 7 },
+    statDateNum: { fontSize: 15, fontWeight: '700', color: '#563f3d', marginTop: 7 },
     statLabel: { fontSize: 9, letterSpacing: 1, color: '#a18d88', marginTop: 5, fontWeight: '700' },
     callout: { backgroundColor: '#f5eae7', borderRadius: 16, padding: 16, marginTop: 22 },
     calloutTitle: { fontSize: 13, fontWeight: '700', color: '#704e49' },
@@ -912,21 +1400,26 @@ const makeStyles = (dark: boolean) => {
     rangeBar: { position: 'absolute', top: 5, bottom: 5 },
     rangeBarPeriod: { backgroundColor: '#fadcd7' },
     rangeBarDraft: { backgroundColor: '#fcd2cb', borderTopWidth: 1, borderBottomWidth: 1, borderColor: '#660000' },
+    rangeBarFertile: { backgroundColor: '#f0e6f7' },
     rangeCapLeft: { left: 3, right: 0, borderTopLeftRadius: 18, borderBottomLeftRadius: 18 },
     rangeCapRight: { left: 0, right: 3, borderTopRightRadius: 18, borderBottomRightRadius: 18 },
     rangeBarMiddle: { left: 0, right: 0, borderRadius: 0 },
     rangeSingle: { left: 3, right: 3, borderRadius: 18 },
     cellInner: { width: 38, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 12 },
     cellSelected: { borderWidth: 1.5, borderColor: '#660000' },
+    cellOvulation: { borderWidth: 1.5, borderColor: '#a87fc2' },
     dayNumber: { fontSize: 14, fontWeight: '600', color: '#503d3a' },
     dayNumberOtherMonth: { color: '#c9b8b4', fontWeight: '400' },
     dayNumberToday: { color: '#660000', fontWeight: '800' },
     dayNumberPeriod: { color: '#502020', fontWeight: '700' },
     dayNumberDraft: { color: '#660000', fontWeight: '700' },
+    dayNumberFertile: { color: '#4a2560', fontWeight: '700' },
     dayNumberFuture: { color: '#d5c8c5' },
     dayDrop: { fontSize: 11, marginTop: 1 },
     todayDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: '#660000', marginTop: 2 },
-    legend: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12, marginBottom: 7 },
+    legend: { flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 12, marginBottom: 7 },
+    legendItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+    legendText: { fontSize: 11, color: '#968582' },
     drop: { fontSize: 15 },
     gestureHelp: { fontSize: 11, lineHeight: 16, color: '#968582', marginTop: 3, marginBottom: 10 },
     card: { backgroundColor: '#fff', borderRadius: 20, padding: 17, marginTop: 13, borderWidth: 1, borderColor: '#f2e8e5' },
@@ -983,6 +1476,25 @@ const makeStyles = (dark: boolean) => {
     modalCancelText: { fontSize: 13, fontWeight: '700', color: '#704e49' },
     modalConfirm: { paddingHorizontal: 18, paddingVertical: 11, borderRadius: 12, backgroundColor: '#660000' },
     modalConfirmText: { fontSize: 13, fontWeight: '700', color: '#fff' },
+    editDurationRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginTop: 14,
+      paddingTop: 12,
+      borderTopWidth: 1,
+      borderTopColor: '#f2e8e5',
+    },
+    editDurationLabel: {
+      fontSize: 12,
+      color: '#8d7772',
+      fontWeight: '600',
+    },
+    editDurationValue: {
+      fontSize: 13,
+      color: '#660000',
+      fontWeight: '700',
+    },
   });
 
   if (!dark) return base;
@@ -993,12 +1505,16 @@ const makeStyles = (dark: boolean) => {
     safe: { ...base.safe, backgroundColor: '#171315' },
     brand: txt(base.brand),
     greeting: txt(base.greeting),
+    todayBadge: { ...base.todayBadge, backgroundColor: '#34272a', borderColor: '#3a2e32' },
+    todayBadgeText: { ...base.todayBadgeText, color: '#f0e4e2' },
     sub: { ...base.sub, color: '#bdaaa6' },
     helper: { ...base.helper, color: '#b6a19d' },
     gestureHelp: { ...base.gestureHelp, color: '#b6a19d' },
     section: txt(base.section),
     stat: bg(base.stat),
     statNum: txt(base.statNum),
+    statDateNum: txt(base.statDateNum),
+    predictionBadge: { color: '#ffb3b3', backgroundColor: '#34272a' },
     statLabel: { ...base.statLabel, color: '#ad9994' },
     callout: { ...base.callout, backgroundColor: '#34272a' },
     calloutTitle: txt(base.calloutTitle),
@@ -1023,20 +1539,24 @@ const makeStyles = (dark: boolean) => {
     rangeBar: base.rangeBar,
     rangeBarPeriod: { backgroundColor: '#482428' },
     rangeBarDraft: { backgroundColor: '#5c2d33', borderTopWidth: 1, borderBottomWidth: 1, borderColor: '#ffb3b3' },
+    rangeBarFertile: { backgroundColor: '#34203e' },
     rangeCapLeft: base.rangeCapLeft,
     rangeCapRight: base.rangeCapRight,
     rangeBarMiddle: base.rangeBarMiddle,
     rangeSingle: base.rangeSingle,
     cellInner: base.cellInner,
     cellSelected: { borderWidth: 1.5, borderColor: '#ffb3b3' },
+    cellOvulation: { borderWidth: 1.5, borderColor: '#c49ae0' },
     dayNumber: txt(base.dayNumber),
     dayNumberOtherMonth: { color: '#68565a', fontWeight: '400' },
     dayNumberToday: { color: '#ffb3b3', fontWeight: '800' },
     dayNumberPeriod: { color: '#ffd6d6', fontWeight: '700' },
     dayNumberDraft: { color: '#ffb3b3', fontWeight: '700' },
+    dayNumberFertile: { color: '#ebdcf5', fontWeight: '700' },
     dayNumberFuture: { color: '#544649' },
     dayDrop: base.dayDrop,
     todayDot: { ...base.todayDot, backgroundColor: '#ffb3b3' },
+    legendText: { ...base.legendText, color: '#b6a19d' },
     card: bg(base.card),
     label: { ...base.label, color: '#c2aaa6' },
     optional: { ...base.optional, color: '#9f8985' },
@@ -1080,6 +1600,18 @@ const makeStyles = (dark: boolean) => {
     modalCancel: { ...base.modalCancel, backgroundColor: '#34272a' },
     modalCancelText: { ...base.modalCancelText, color: '#f0e4e2' },
     modalConfirm: { ...base.modalConfirm, backgroundColor: '#660000' },
+    editDurationRow: {
+      ...base.editDurationRow,
+      borderTopColor: '#34272a',
+    },
+    editDurationLabel: {
+      ...base.editDurationLabel,
+      color: '#b6a19d',
+    },
+    editDurationValue: {
+      ...base.editDurationValue,
+      color: '#ffb3b3',
+    },
     settingsButton: { ...base.settingsButton, backgroundColor: '#34272a' },
     settingsIcon: { ...base.settingsIcon, color: '#ffb3b3' },
   };
