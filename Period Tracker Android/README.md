@@ -12,11 +12,11 @@ Use `npm run android` to start Expo with the Android target. Expo Go runs the ap
 
 ## Features
 
-- Add periods by choosing a start date and optional end date in the native date picker.
+- Browse saved period dates in the month calendar with connected range highlights and blood drop indicators. Tap an available date to log a period start, or drag across dates from start to end to record a full period. Dates in completed records are disabled to prevent accidental modifications.
 - Update and delete saved periods.
 - See the inclusive length of each completed period.
-- Review all periods, the five most recent records, or records by start year.
-- View average completed period length and average cycle length. A cycle length is shown on a completed period when the next period starts within 45 days of its start date, measured through the day before the next start. Longer intervals are flagged as gaps and excluded from the cycle average. Records without an end date or a following period show `N/A`.
+- Review all periods, the five most recent records, or records by start year in History.
+- View recent averages based on up to six latest consecutive cycles (each adjacent start is no more than 45 days apart) and historical averages based on all saved records. Period averages use completed records. Cycle averages exclude intervals longer than 45 days.
 - Keep records in the device's `period-tracker.db` SQLite database.
 - Open Settings from the top-right gear to set a name and choose System, Light, or Dark appearance. System follows the device setting; both preferences are saved locally.
 

@@ -55,3 +55,15 @@ Run commands from the named subproject directory.
 - For CLI schema changes, update the SQLModel definition and create/review an Alembic migration. For mobile schema changes, update the Expo SQLite initialization/migration logic so existing installs remain usable.
 - Keep sensitive tracking data local to each app's configured database. Never commit `.env`, local SQLite databases, generated native build folders, or dependency directories.
 - Make changes within the relevant subproject and update its README when setup or user-facing commands change. Avoid adding dependencies or new conventions where the existing stack already provides the needed behavior.
+
+## TypeScript Readability
+
+- Write code for readability, not minimum line count.
+- Prefer a maximum target line length of 80 characters.
+- Proactively split long function calls, chained expressions, conditional expressions, and complex return statements across multiple lines.
+- Use multiline formatting for objects, arrays, function arguments, and JSX when it improves readability, even when the code could technically fit on one line.
+- Avoid deeply nested expressions; extract intermediate variables or small helper functions when that improves clarity.
+- Do not rely on Prettier alone to decide where logical line breaks belong.
+- After implementing a change, run Prettier on modified files and inspect the resulting code.
+- If Prettier collapses an expression into an unreadable line, restructure the expression into smaller, meaningful parts.
+- Do not introduce unnecessary abstractions solely to shorten lines.
