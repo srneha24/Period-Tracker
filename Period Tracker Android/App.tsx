@@ -1,5 +1,6 @@
 import React, { Suspense, useEffect, useMemo, useState } from 'react';
-import { Alert, Platform, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, useColorScheme, View } from 'react-native';
+import { Alert, Keyboard, Platform, ScrollView, StyleSheet, Text, TextInput, ToastAndroid, TouchableOpacity, useColorScheme, View } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
 import * as SQLite from 'expo-sqlite';
 import DateTimePicker, { type DateTimePickerChangeEvent } from '@react-native-community/datetimepicker';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
@@ -109,6 +110,8 @@ function TrackerContent() {
     db.runSync('INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', 'name', value);
     setDisplayName(value);
     setNameDraft(value);
+    Keyboard.dismiss();
+    if (Platform.OS === 'android') ToastAndroid.show('Name saved', ToastAndroid.SHORT);
   };
   const edit = (p: Period) => { setStart(p.start_date); setEnd(p.end_date || ''); setEditing(p.id); setTab('home'); };
   const remove = (id: number) => Alert.alert('Delete this record?', 'This period will be removed from your history.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Delete', style: 'destructive', onPress: () => { db.runSync('DELETE FROM periods WHERE id = ?', id); refresh(); } }]);
@@ -117,7 +120,7 @@ function TrackerContent() {
 
   return (
     <SafeAreaView style={s.safe} edges={['top', 'bottom']}>
-      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={isDark ? '#171315' : '#fff8f6'} />
+      <StatusBar style={isDark ? 'light' : 'dark'} />
       <View style={s.top}>
         <View>
           <Text style={s.eyebrow}>Because privacy is important</Text>

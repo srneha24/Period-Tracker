@@ -19,7 +19,8 @@
           "backgroundColor": "#fff8f6",
           "image": "./assets/icon.png"
         }
-      ]
+      ],
+      "expo-status-bar"
     ]
   }
 }
