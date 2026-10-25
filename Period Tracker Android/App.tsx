@@ -30,11 +30,6 @@ const migrateDb = async (db: SQLite.SQLiteDatabase) => {
       value TEXT NOT NULL
     );
   `);
-  const columns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(periods)');
-  if (!columns.some(column => column.name === 'total_days')) {
-    await db.execAsync('ALTER TABLE periods ADD COLUMN total_days INTEGER;');
-    await db.execAsync('UPDATE periods SET total_days = CASE WHEN end_date IS NOT NULL THEN CAST(julianday(end_date) - julianday(start_date) AS INTEGER) + 1 ELSE NULL END;');
-  }
 };
 
 function TrackerContent() {
@@ -75,7 +70,7 @@ function TrackerContent() {
   }, [db]);
 
   const ordered = useMemo(() => [...periods].reverse(), [periods]);
-  const previousPeriodById = useMemo(() => new Map(ordered.map((period, index) => [period.id, index > 0 ? ordered[index - 1] : null])), [ordered]);
+  const nextPeriodById = useMemo(() => new Map(ordered.map((period, index) => [period.id, ordered[index + 1] ?? null])), [ordered]);
   const shown = useMemo(() => {
     if (filter === 'All') return periods;
     if (filter === 'Recent') return periods.slice(0, 5);
@@ -83,7 +78,12 @@ function TrackerContent() {
   }, [periods, filter]);
   const completed = periods.filter(p => p.end_date);
   const avgLength = completed.length ? Math.ceil(completed.reduce((sum, p) => sum + (p.total_days ?? 0), 0) / completed.length) : null;
-  const cycles = ordered.slice(1).map((p, i) => days(ordered[i].start_date, p.start_date) - 1).filter(n => n <= 50);
+  const cycles = ordered.flatMap((period, index) => {
+    const nextPeriod = ordered[index + 1];
+    if (!period.end_date || !nextPeriod) return [];
+    const startDateGap = days(period.start_date, nextPeriod.start_date);
+    return startDateGap <= 45 ? [startDateGap - 1] : [];
+  });
   const avgCycle = cycles.length ? Math.ceil(cycles.reduce((a, b) => a + b, 0) / cycles.length) : null;
 
   const save = () => {
@@ -140,12 +140,12 @@ function TrackerContent() {
             {picker && <DateTimePicker value={picker === 'start' ? parseDate(start) : end ? parseDate(end) : parseDate(start)} mode="date" display={Platform.OS === 'ios' ? 'spinner' : 'default'} maximumDate={new Date()} minimumDate={picker === 'end' ? parseDate(start) : undefined} themeVariant={isDark ? 'dark' : 'light'} onValueChange={onDateValueChange} onDismiss={onDateDismiss} />}
             {picker && Platform.OS === 'ios' && <TouchableOpacity style={s.pickerDone} onPress={() => setPicker(null)}><Text style={s.pickerDoneText}>Done</Text></TouchableOpacity>}
             <TouchableOpacity style={s.button} onPress={save}><Text style={s.buttonText}>{editing ? 'Save changes' : 'Save period'}  →</Text></TouchableOpacity>{editing && <TouchableOpacity onPress={() => { setEditing(null); setStart(today); setEnd(''); }}><Text style={s.cancel}>Cancel editing</Text></TouchableOpacity>}</View>
-          <Text style={s.section}>Recent periods</Text>{recentPeriods.map(p => <PeriodCard key={p.id} p={p} previousPeriod={previousPeriodById.get(p.id) ?? null} s={s} onEdit={edit} onDelete={remove} />)}{!periods.length && <Text style={s.empty}>Your saved periods will appear here.</Text>}
+          <Text style={s.section}>Recent periods</Text>{recentPeriods.map(p => <PeriodCard key={p.id} p={p} nextPeriod={nextPeriodById.get(p.id) ?? null} s={s} onEdit={edit} onDelete={remove} />)}{!periods.length && <Text style={s.empty}>Your saved periods will appear here.</Text>}
           {periods.length > 5 && <TouchableOpacity onPress={() => setTab('history')}><Text style={s.more}>See all periods →</Text></TouchableOpacity>}
         </> : tab === 'history' ? <><Text style={s.greeting}>Your history</Text><Text style={s.sub}>All the notes you’ve logged, in one place.</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.filters}>{years.map(y => <TouchableOpacity key={y} style={[s.chip, filter === y && s.chipOn]} onPress={() => setFilter(y)}><Text style={[s.chipText, filter === y && s.chipTextOn]}>{y === 'Recent' ? 'Recent 5' : y}</Text></TouchableOpacity>)}</ScrollView>
           <View style={s.historyStats}><Text style={s.historyCount}>{shown.length}</Text><Text style={s.historyLabel}>{filter === 'All' ? 'TOTAL RECORDS' : filter === 'Recent' ? 'MOST RECENT' : `STARTED IN ${filter}`}</Text></View>
-          {shown.map(p => <PeriodCard key={p.id} p={p} previousPeriod={previousPeriodById.get(p.id) ?? null} s={s} onEdit={edit} onDelete={remove} />)}{!shown.length && <Text style={s.empty}>No periods to show yet. Start by logging one.</Text>}
-          <View style={s.note}><Text style={s.noteTitle}>A note about your averages</Text><Text style={s.noteText}>Average period length uses completed records. Cycle length is counted from the previous period’s start date to the date before the current period’s start date. Gaps over 50 days are flagged in your history.</Text></View>
+          {shown.map(p => <PeriodCard key={p.id} p={p} nextPeriod={nextPeriodById.get(p.id) ?? null} s={s} onEdit={edit} onDelete={remove} />)}{!shown.length && <Text style={s.empty}>No periods to show yet. Start by logging one.</Text>}
+          <View style={s.note}><Text style={s.noteTitle}>A note about your averages</Text><Text style={s.noteText}>Average period length uses completed records. A cycle length is shown on a completed period when the next start is within 45 days, measured through the day before that next start. Longer intervals are flagged as gaps and excluded from the average.</Text></View>
         </> : <>
           <Text style={s.greeting}>Settings</Text><Text style={s.sub}>Make your tracker feel like yours.</Text>
           <View style={s.card}><Text style={s.section}>Your name</Text><Text style={s.appearanceHelp}>Add a name for your personal welcome.</Text><TextInput accessibilityLabel="Your name" value={nameDraft} onChangeText={setNameDraft} placeholder="Enter your name" placeholderTextColor={isDark ? '#a99591' : '#b4a8a6'} maxLength={40} returnKeyType="done" onSubmitEditing={saveName} style={s.nameInput} /><TouchableOpacity style={s.button} onPress={saveName}><Text style={s.buttonText}>Save name</Text></TouchableOpacity></View>
@@ -169,10 +169,11 @@ export default function App() {
   );
 }
 
-function PeriodCard({ p, previousPeriod, s, onEdit, onDelete }: { p: Period; previousPeriod: Period | null; s: ReturnType<typeof makeStyles>; onEdit: (p: Period) => void; onDelete: (id: number) => void }) {
-  const cycleDays = previousPeriod ? days(previousPeriod.start_date, p.start_date) - 1 : null;
-  const cycleText = previousPeriod === null ? 'First record' : cycleDays! > 50 ? `>50 days gap in records (${cycleDays} days)` : `${cycleDays} days cycle length`;
-  const cycleIsLong = cycleDays !== null && cycleDays > 50;
+function PeriodCard({ p, nextPeriod, s, onEdit, onDelete }: { p: Period; nextPeriod: Period | null; s: ReturnType<typeof makeStyles>; onEdit: (p: Period) => void; onDelete: (id: number) => void }) {
+  const startDateGap = nextPeriod ? days(p.start_date, nextPeriod.start_date) : null;
+  const cycleDays = startDateGap !== null ? startDateGap - 1 : null;
+  const cycleText = !p.end_date || nextPeriod === null ? 'Ongoing or N/A' : startDateGap! > 45 ? `>45 days gap in records (${cycleDays} days)` : `${cycleDays} days cycle length`;
+  const cycleIsLong = startDateGap !== null && startDateGap > 45;
   return <View style={s.period}><View style={s.periodIcon}><Text style={{ fontSize: 18 }}>🩸</Text></View><View style={{ flex: 1 }}><Text style={s.periodDate}>{pretty(p.start_date)} – {p.end_date ? pretty(p.end_date) : 'Ongoing'}</Text><Text style={s.periodMeta}>{p.total_days !== null ? `${p.total_days} days` : 'In progress'}</Text><Text style={[s.periodGap, cycleIsLong && s.periodGapWarning]}>{cycleText}</Text></View><TouchableOpacity style={s.action} onPress={() => onEdit(p)}><Text style={s.actionText}>Edit</Text></TouchableOpacity><TouchableOpacity style={s.trash} onPress={() => onDelete(p.id)}><Text style={{ color: '#aa8987', fontSize: 16 }}>×</Text></TouchableOpacity></View>;
 }
 

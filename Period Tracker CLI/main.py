@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import date
 from math import ceil
 
 from db import engine
@@ -30,26 +30,22 @@ def print_results(results):
     table.add_column("Cycle Length", justify="center", style="purple")
 
     total_days = 0
-    last_period_start_date = None
     total_cycle_days = 0
     cycle_count = 0
-    for period in results:
+    for index, period in enumerate(results):
         total_days += period.total_days if period.total_days is not None else 0
-        if last_period_start_date:
-            cycle_days = (
-                (period.start_date - timedelta(days=1)) - last_period_start_date
-            ).days
-            # Check if the cycle length is more than 50 days to indicate a gap in the records
-            if cycle_days > 50:
-                cycle_length = f">50 days gap in records ({cycle_days} days)"
+        next_period = results[index + 1] if index + 1 < len(results) else None
+        if period.end_date is None or next_period is None:
+            cycle_length = "Ongoing or N/A"
+        else:
+            start_date_gap = (next_period.start_date - period.start_date).days
+            cycle_days = start_date_gap - 1
+            if start_date_gap > 45:
+                cycle_length = f">45 days gap in records ({cycle_days} days)"
             else:
                 cycle_length = cycle_days
                 total_cycle_days += cycle_days
                 cycle_count += 1
-        else:
-            cycle_length = "First record"
-
-        last_period_start_date = period.start_date
 
         table.add_row(
             str(period.id),
