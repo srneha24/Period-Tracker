@@ -29,6 +29,8 @@ def print_results(results):
     table.add_column("End Date", justify="center", style="green")
     table.add_column("Period Length", justify="center", style="red")
     table.add_column("Cycle Length", justify="center", style="purple")
+    table.add_column("Ovulation Date", justify="center", style="magenta")
+    table.add_column("Fertility Window", justify="center", style="blue", no_wrap=True)
 
     total_days = 0
     total_cycle_days = 0
@@ -48,12 +50,28 @@ def print_results(results):
                 total_cycle_days += cycle_days
                 cycle_count += 1
 
+        ovulation_date = "N/A"
+        fertility_window = "N/A"
+        if period.end_date is not None and next_period is not None:
+            start_date_gap = (next_period.start_date - period.start_date).days
+            if start_date_gap <= 45:
+                estimated_ovulation = next_period.start_date - timedelta(days=14)
+                fertile_window_start = estimated_ovulation - timedelta(days=5)
+                if fertile_window_start > period.end_date:
+                    ovulation_date = estimated_ovulation.strftime("%d %B %Y")
+                    fertility_window = (
+                        f"{fertile_window_start.strftime('%d %B %Y')} → "
+                        f"{estimated_ovulation.strftime('%d %B %Y')}"
+                    )
+
         table.add_row(
             str(period.id),
             period.start_date.strftime("%d %B %Y"),
             period.end_date.strftime("%d %B %Y") if period.end_date else "Ongoing",
             str(period.total_days) if period.total_days is not None else "N/A",
             str(cycle_length),
+            ovulation_date,
+            fertility_window,
         )
 
     console.print(table)
