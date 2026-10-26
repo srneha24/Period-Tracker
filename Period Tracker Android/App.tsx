@@ -2,6 +2,7 @@ import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } fr
 import {
   Alert,
   Keyboard,
+  Linking,
   Modal,
   PanResponder,
   Platform,
@@ -25,6 +26,18 @@ type Period = { id: number; start_date: string; end_date: string | null; total_d
 type ThemePreference = 'system' | 'light' | 'dark';
 type Tab = 'overview' | 'calendar' | 'history' | 'personalisation';
 type RangeDraft = { periodId?: number; start: string; end: string };
+
+const USER_MANUAL_URL = 'https://drive.google.com/file/d/1nv1JcksJB0GfxRdCwhTW-U0pEymEEDQX/view?usp=drive_link';
+const TUTORIAL_VIDEO_URL = 'https://drive.google.com/file/d/1CLpkyuvgP08HHNWniK-ihgc4YFU3LutI/view?usp=drive_link';
+
+const openResourceLink = async (url: string, label: string) => {
+  try {
+    await Linking.openURL(url);
+  } catch (error) {
+    console.error(`Failed to open ${label} link:`, error);
+    Alert.alert('Unable to open link', `Could not open the ${label} link.`);
+  }
+};
 
 type CalendarDayInfo = {
   dateString: string;
@@ -596,6 +609,29 @@ function TrackerContent() {
                   </TouchableOpacity>
                 ))}
               </View>
+            </View>
+            <View style={s.resources}>
+              <Text style={s.appearanceTitle}>Help & resources</Text>
+              <TouchableOpacity
+                accessibilityRole="link"
+                style={s.resourceLink}
+                onPress={() =>
+                  openResourceLink(USER_MANUAL_URL, 'user manual')
+                }
+              >
+                <Text style={s.resourceLinkText}>📖 User Manual</Text>
+                <Text style={s.resourceArrow}>{'>'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                accessibilityRole="link"
+                style={s.resourceLink}
+                onPress={() =>
+                  openResourceLink(TUTORIAL_VIDEO_URL, 'tutorial video')
+                }
+              >
+                <Text style={s.resourceLinkText}>🎥 Tutorial</Text>
+                <Text style={s.resourceArrow}>{'>'}</Text>
+              </TouchableOpacity>
             </View>
           </>
         )}
@@ -1466,6 +1502,28 @@ const makeStyles = (dark: boolean) => {
     noteText: { fontSize: 11, lineHeight: 17, color: '#907a75', marginTop: 6 },
     nameInput: { height: 47, marginTop: 12, borderRadius: 12, backgroundColor: '#fcf7f5', paddingHorizontal: 13, color: '#503d3a', fontSize: 14, borderWidth: 1, borderColor: '#f1e8e5' },
     appearance: { backgroundColor: '#fff', borderRadius: 17, padding: 15, marginTop: 18, borderWidth: 1, borderColor: '#f2e8e5' },
+    resources: {
+      backgroundColor: '#fff',
+      borderRadius: 17,
+      padding: 15,
+      marginTop: 14,
+      borderWidth: 1,
+      borderColor: '#f2e8e5',
+    },
+    resourceLink: {
+      minHeight: 44,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      borderBottomWidth: 1,
+      borderBottomColor: '#f2e8e5',
+    },
+    resourceLinkText: {
+      fontSize: 13,
+      color: '#660000',
+      fontWeight: '600',
+    },
+    resourceArrow: { fontSize: 16, color: '#a18d88' },
     appearanceTitle: { fontSize: 14, fontWeight: '700', color: '#503d3a' },
     appearanceHelp: { fontSize: 11, color: '#968582', marginTop: 4 },
     appearanceOptions: { flexDirection: 'row', gap: 8, marginTop: 12 },
@@ -1595,6 +1653,10 @@ const makeStyles = (dark: boolean) => {
     noteText: { ...base.noteText, color: '#c5aeaa' },
     nameInput: { ...base.nameInput, backgroundColor: '#1c1719', color: '#f0e4e2', borderColor: '#403337' },
     appearance: bg(base.appearance),
+    resources: bg(base.resources),
+    resourceLink: { ...base.resourceLink, borderBottomColor: '#3a2e32' },
+    resourceLinkText: { ...base.resourceLinkText, color: '#ffb3b3' },
+    resourceArrow: { ...base.resourceArrow, color: '#ad9994' },
     appearanceTitle: txt(base.appearanceTitle),
     appearanceHelp: { ...base.appearanceHelp, color: '#b6a19d' },
     appearanceOption: { ...base.appearanceOption, backgroundColor: '#1c1719' },
