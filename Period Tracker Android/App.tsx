@@ -23,7 +23,7 @@ import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 type Period = { id: number; start_date: string; end_date: string | null; total_days: number | null };
 type ThemePreference = 'system' | 'light' | 'dark';
-type Tab = 'overview' | 'calendar' | 'history' | 'settings';
+type Tab = 'overview' | 'calendar' | 'history' | 'personalisation';
 type RangeDraft = { periodId?: number; start: string; end: string };
 
 type CalendarDayInfo = {
@@ -38,7 +38,11 @@ type CalendarDayInfo = {
 const formatDate = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 const parseDate = (value: string) => { const [year, month, day] = value.split('-').map(Number); return new Date(year, month - 1, day, 12); };
 const today = formatDate(new Date());
-const pretty = (value: string) => parseDate(value).toLocaleDateString('en', { day: 'numeric', month: 'short', year: 'numeric' });
+const pretty = (value: string) => {
+  const date = parseDate(value);
+  const month = date.toLocaleDateString('en', { month: 'short' });
+  return `${date.getDate()} ${month}, ${date.getFullYear()}`;
+};
 const days = (a: string, b: string) => Math.round((parseDate(b).getTime() - parseDate(a).getTime()) / 86400000);
 const migrateDb = async (db: SQLiteDatabase) => db.execAsync(`CREATE TABLE IF NOT EXISTS periods (id INTEGER PRIMARY KEY AUTOINCREMENT, start_date TEXT NOT NULL, end_date TEXT, total_days INTEGER); CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL);`);
 const average = (values: number[]) => values.length ? Math.ceil(values.reduce((a, b) => a + b, 0) / values.length) : null;
@@ -215,7 +219,7 @@ function TrackerContent() {
       setNameDraft(n);
       refresh();
     } catch (e) {
-      console.error('Failed to load settings:', e);
+      console.error('Failed to load personalisation:', e);
     }
   }, [db, refresh]);
 
@@ -437,8 +441,8 @@ function TrackerContent() {
           <Text style={s.eyebrow}>YOUR PRIVATE CYCLE JOURNAL</Text>
           <Text style={s.brand}>Period Tracker</Text>
         </View>
-        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Settings" style={s.settingsButton} onPress={() => setTab('settings')}>
-          <Text style={s.settingsIcon}>⚙</Text>
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Personalisation" style={s.personalisationButton} onPress={() => setTab('personalisation')}>
+          <Text style={s.personalisationIcon}>🎨</Text>
         </TouchableOpacity>
       </View>
       <ScrollView scrollEnabled={scrollEnabled} contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
@@ -553,11 +557,11 @@ function TrackerContent() {
             {!shown.length && <Text style={s.empty}>No periods to show yet. Start by tapping a date in Calendar.</Text>}
           </>
         )}
-        {tab === 'settings' && (
+        {tab === 'personalisation' && (
           <>
-            <Text style={s.greeting}>Settings</Text>
-            <View style={s.settingsCard}>
-              <Text style={s.settingsSection}>Your name</Text>
+            <Text style={s.greeting}>Personalisation</Text>
+            <View style={s.personalisationCard}>
+              <Text style={s.personalisationSection}>Your name</Text>
               <Text style={s.appearanceHelp}>Add a name for your personal welcome.</Text>
               <TextInput
                 accessibilityLabel="Your name"
@@ -576,7 +580,7 @@ function TrackerContent() {
             </View>
             <View style={s.appearance}>
               <Text style={s.appearanceTitle}>Appearance</Text>
-              <Text style={s.appearanceHelp}>Choose a theme or follow your device setting.</Text>
+              <Text style={s.appearanceHelp}>Choose a theme or follow your device appearance.</Text>
               <View style={s.appearanceOptions}>
                 {(['system', 'light', 'dark'] as const).map(option => (
                   <TouchableOpacity
@@ -904,6 +908,11 @@ function CalendarGrid({
       const nextStartMs = parseDate(nextPeriod.start_date).getTime();
       const ovulationMs = nextStartMs - 14 * 86400000;
       const ovulationDate = formatDate(new Date(ovulationMs));
+      const fertileStartDate = formatDate(
+        new Date(ovulationMs - 5 * 86400000)
+      );
+
+      if (fertileStartDate <= period.end_date) continue;
 
       ovulationDates.add(ovulationDate);
 
@@ -912,9 +921,6 @@ function CalendarGrid({
         fertilityDates.add(fDate);
       }
 
-      const fertileStartDate = formatDate(
-        new Date(ovulationMs - 5 * 86400000)
-      );
       windowRanges.push({ start: fertileStartDate, end: ovulationDate });
     }
 
@@ -1355,8 +1361,8 @@ const makeStyles = (dark: boolean) => {
   const base = StyleSheet.create({
     safe: { flex: 1, backgroundColor: '#fff8f6' },
     top: { height: 66, paddingHorizontal: 23, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-    settingsButton: { width: 42, height: 42, borderRadius: 21, backgroundColor: '#f5e6e1', alignItems: 'center', justifyContent: 'center' },
-    settingsIcon: { color: '#660000', fontSize: 22 },
+    personalisationButton: { width: 42, height: 42, borderRadius: 21, backgroundColor: '#f5e6e1', alignItems: 'center', justifyContent: 'center' },
+    personalisationIcon: { color: '#660000', fontSize: 22 },
     eyebrow: { fontSize: 9, letterSpacing: 1.7, color: '#a18d88', fontWeight: '700' },
     brand: { fontSize: 25, fontWeight: '800', letterSpacing: -0.7, color: '#563f3d' },
     content: { paddingHorizontal: 21, paddingBottom: 26 },
@@ -1367,7 +1373,7 @@ const makeStyles = (dark: boolean) => {
     sub: { fontSize: 13, color: '#968582', marginTop: 5, marginBottom: 13 },
     helper: { fontSize: 11, color: '#968582', marginTop: -7, marginBottom: 10 },
     section: { fontSize: 17, fontWeight: '700', color: '#503d3a', marginTop: 18, marginBottom: 12 },
-    settingsSection: { fontSize: 17, fontWeight: '700', color: '#503d3a', marginBottom: 12 },
+    personalisationSection: { fontSize: 17, fontWeight: '700', color: '#503d3a', marginBottom: 12 },
     stats: { flexDirection: 'row', gap: 11, marginTop: 2 },
     stat: { flex: 1, backgroundColor: '#fff', borderRadius: 17, padding: 15, borderWidth: 1, borderColor: '#f2e8e5' },
     statHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
@@ -1423,7 +1429,7 @@ const makeStyles = (dark: boolean) => {
     drop: { fontSize: 15 },
     gestureHelp: { fontSize: 11, lineHeight: 16, color: '#968582', marginTop: 3, marginBottom: 10 },
     card: { backgroundColor: '#fff', borderRadius: 20, padding: 17, marginTop: 13, borderWidth: 1, borderColor: '#f2e8e5' },
-    settingsCard: { backgroundColor: '#fff', borderRadius: 20, padding: 17, paddingTop: 10, marginTop: 18, borderWidth: 1, borderColor: '#f2e8e5' },
+    personalisationCard: { backgroundColor: '#fff', borderRadius: 20, padding: 17, paddingTop: 10, marginTop: 18, borderWidth: 1, borderColor: '#f2e8e5' },
     label: { fontSize: 9, letterSpacing: 1.3, fontWeight: '700', color: '#9b8580', marginTop: 10, marginBottom: 7 },
     optional: { color: '#c5b4b0', fontWeight: '500' },
     dateButton: { height: 47, borderRadius: 12, backgroundColor: '#fcf7f5', paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderColor: '#f1e8e5' },
@@ -1512,7 +1518,7 @@ const makeStyles = (dark: boolean) => {
     helper: { ...base.helper, color: '#b6a19d' },
     gestureHelp: { ...base.gestureHelp, color: '#b6a19d' },
     section: txt(base.section),
-    settingsSection: txt(base.settingsSection),
+    personalisationSection: txt(base.personalisationSection),
     stat: bg(base.stat),
     statNum: txt(base.statNum),
     statDateNum: txt(base.statDateNum),
@@ -1560,7 +1566,7 @@ const makeStyles = (dark: boolean) => {
     todayDot: { ...base.todayDot, backgroundColor: '#ffb3b3' },
     legendText: { ...base.legendText, color: '#b6a19d' },
     card: bg(base.card),
-    settingsCard: bg(base.settingsCard),
+    personalisationCard: bg(base.personalisationCard),
     label: { ...base.label, color: '#c2aaa6' },
     optional: { ...base.optional, color: '#9f8985' },
     dateButton: { ...base.dateButton, backgroundColor: '#1c1719', borderColor: '#403337' },
@@ -1615,7 +1621,7 @@ const makeStyles = (dark: boolean) => {
       ...base.editDurationValue,
       color: '#ffb3b3',
     },
-    settingsButton: { ...base.settingsButton, backgroundColor: '#34272a' },
-    settingsIcon: { ...base.settingsIcon, color: '#ffb3b3' },
+    personalisationButton: { ...base.personalisationButton, backgroundColor: '#34272a' },
+    personalisationIcon: { ...base.personalisationIcon, color: '#ffb3b3' },
   };
 };

@@ -18,7 +18,7 @@ Use `npm run android` to start Expo with the Android target. Expo Go runs the ap
 - Review all periods, the five most recent records, or records by start year in History.
 - View recent averages based on up to six latest consecutive cycles (each adjacent start is no more than 45 days apart) and historical averages based on all saved records. Period averages use completed records. Cycle averages exclude intervals longer than 45 days.
 - Keep records in the device's `period-tracker.db` SQLite database.
-- Open Settings from the top-right gear to set a name and choose System, Light, or Dark appearance. System follows the device setting; both preferences are saved locally.
+- Open Personalisation from the top-right button to set a name and choose System, Light, or Dark appearance. System follows the device appearance; both preferences are saved locally.
 
 The date picker is provided by Expo's supported native date picker package, so it works in Expo Go.
 
