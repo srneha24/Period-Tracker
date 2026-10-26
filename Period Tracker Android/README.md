@@ -1,47 +1,75 @@
 # Period Tracker Android
 
-An Expo and React Native version of the Period Tracker app. Period records are stored locally in SQLite on the device. No server or account is required.
+An offline-first period tracker built with TypeScript, React Native 0.88, and
+Expo SDK 58. Period records and personalisation settings are stored in the
+app's local SQLite database. No account or server is required.
 
-## Run in Expo Go
+## Run with Expo Go
 
-1. Use Node.js 22.13 or newer, then install the project dependencies with `npm install`.
-2. Start Expo with `npx expo start`.
-3. Update Expo Go on your Android phone, sign in, and scan the QR code shown in the terminal or browser. Your phone and computer should be on the same network.
+Use Node.js 22.13 or newer. From this directory, install dependencies and
+start Expo:
 
-Use `npm run android` to start Expo with the Android target. Expo Go runs the app without an Android Studio build.
+```bash
+npm install
+npx expo start
+```
+
+Open Expo Go on an Android phone and scan the QR code shown in the terminal or
+browser. Keep the phone and computer on the same network. To launch the
+Android target from a development environment, use `npm run android`.
 
 ## Features
 
-- Browse saved period dates in the month calendar with connected range highlights and blood drop indicators. Tap an available date to log a period start, or drag across dates from start to end to record a full period. Dates in completed records are disabled to prevent accidental modifications.
-- Update and delete saved periods.
-- See the inclusive length of each completed period.
-- Review all periods, the five most recent records, or records by start year in History.
-- View recent averages based on up to six latest consecutive cycles (each adjacent start is no more than 45 days apart) and historical averages based on all saved records. Period averages use completed records. Cycle averages exclude intervals longer than 45 days.
-- Keep records in the device's `period-tracker.db` SQLite database.
-- Open Personalisation from the top-right button to set a name and choose System, Light, or Dark appearance. System follows the device appearance; both preferences are saved locally.
+- **Calendar:** Browse months, tap a free date to record an ongoing period, or
+  drag from its first day through its last day to draft a complete period.
+  Review the dates and duration and confirm before saving. Future start dates
+  and dates already covered by saved periods cannot be selected.
+- **Edit and delete:** Change period dates in History. The app checks for
+  invalid dates and overlap with other records. Deletion requires confirmation.
+- **History:** Review all records, the five most recent records, or records
+  filtered by start year. Records show period duration and a cycle length or a
+  long-gap marker when the following start date is available.
+- **Overview:** See recent and historical averages, estimated next period and
+  ovulation dates, and a status for today. Recent averages use up to six latest
+  consecutive cycles; historical averages use all records. Period averages
+  include completed periods only.
+- **Fertility calendar:** Past cycle dates can show an estimated five-day
+  fertile window and ovulation date when both period records are complete and
+  the next start is within 45 days.
+- **Personalisation:** Set a name for the Overview greeting and choose System,
+  Light, or Dark appearance. System follows the device setting.
+- **Resources:** Open the user manual and tutorial video from Personalisation.
 
-The date picker is provided by Expo's supported native date picker package, so it works in Expo Go.
+All averages are rounded up to a whole day. Cycle lengths are the difference
+between consecutive start dates minus one day. Intervals greater than 45 days
+are shown as gaps and excluded from cycle averages. Estimates use recorded
+dates only, can be inaccurate, and are not medical guidance or contraception.
 
-## Build APK
+See the [user manual](USER_MANUAL.md) for calendar, history, prediction, and
+personalisation instructions.
 
-Make sure you have the following installed
+## Build an Android APK
 
-- JDK 17
-- Android CLI
-
-If you do not have the platform tools already installed, run the following command to install them. The version you require for your Gradle may be different than the versions set in the following example
+For a local release build, install JDK 17 and the Android command-line tools.
+Install the Android platform and build tools required by the Gradle project;
+for example:
 
 ```powershell
 android sdk install "platforms;android-36" "build-tools;36.0.0"
 ```
 
-Run the following commands to build the APK
+Generate the Android project and set the Android SDK path in
+`android/local.properties` (replace `<USERNAME>` with your Windows account
+name), then build the release APK:
 
 ```powershell
 npx expo prebuild --platform android --clean
 Set-Content android\local.properties "sdk.dir=C:\\Users\\<USERNAME>\\AppData\\Local\\Android\\Sdk"
-cd android
+Set-Location android
 .\gradlew.bat assembleRelease
 ```
 
-The APK will be in `.\android\app\build\outputs\apk\release\app-release.apk`.
+The APK is written to
+`android\app\build\outputs\apk\release\app-release.apk`. The generated
+`android` directory is a build artifact and is not the source of truth for the
+Expo project.

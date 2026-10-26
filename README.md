@@ -1,50 +1,48 @@
 # Period Tracker
 
-A privacy-focused menstrual cycle tracking project that helps log periods, track cycle lengths, and monitor cycle statistics over time.
+Period Tracker contains two independent apps for recording period dates and
+reviewing cycle history. There is no shared runtime or network service:
 
-The project contains two client applications sharing the same core tracking logic:
+- [Period Tracker CLI](Period%20Tracker%20CLI/README.md) stores records in a
+  PostgreSQL database you configure.
+- [Period Tracker Android](Period%20Tracker%20Android/README.md) stores
+  records and preferences in an on-device SQLite database and can run offline.
 
-- **[Period Tracker CLI](file:///c:/Users/Neha/Documents/Programming/Period%20Tracker/Period%20Tracker%20CLI/README.md)**: A Python command-line app using Typer, SQLModel, and PostgreSQL.
-- **[Period Tracker Android](file:///c:/Users/Neha/Documents/Programming/Period%20Tracker/Period%20Tracker%20Android/README.md)**: A cross-platform mobile app built with React Native and Expo, storing data locally on device with SQLite.
+## Features
 
----
+The CLI supports adding, editing, deleting, filtering, and viewing period
+records. It reports period and cycle lengths and estimates a next period start,
+ovulation date, and fertile window from recent cycle history.
 
-## Tracking & Calculation Rules
+The Android app provides a calendar for recording periods, history filters,
+editing and deletion, recent and historical averages, cycle estimates, and
+local name and appearance preferences. See the [Android user manual](Period%20Tracker%20Android/USER_MANUAL.md)
+for instructions on using the mobile app.
 
-- **Period Length**: Calculated inclusively when both start and end dates are recorded:
-  $$\text{Period Length} = (\text{End Date} - \text{Start Date}) + 1 \text{ days}$$
-  Ongoing records without an end date do not have a completed length yet.
+## Tracking and calculation rules
 
-- **Cycle Length**: Measured as the difference of days from the start date of the previous period to the date before the start date of the current period:
-  $$\text{Cycle Length} = (\text{Current Start Date} - 1\text{ day}) - \text{Previous Start Date}$$
-
-- **Average Metrics & Gaps**:
-  - **Average Period Length**: The average duration of all completed periods (rounded up to the nearest whole day).
-  - **Average Cycle Length**: The average duration across recorded cycles. Intervals with gaps greater than 50 days are flagged in history/reports and excluded from the cycle average to prevent distorted statistics.
-
----
+- **Period length:** Counts both the start and end dates. An ongoing record
+  has no completed length.
+- **Cycle length:** Calculated as the days between consecutive start dates,
+  minus one day, matching the app's reports.
+- **Long gaps:** Start-date intervals greater than 45 days are marked as gaps
+  and excluded from cycle averages. The Android app uses intervals of up to
+  six latest consecutive cycles for recent averages and estimates.
+- **Averages:** Average values are rounded up to a whole day. The Android
+  app's period averages include completed records only.
+- **Ovulation and fertility estimates:** Based only on recorded start dates.
+  Ovulation is estimated 14 days before the next expected period; the fertile
+  window is the five days before that estimate. These are estimates, not
+  medical guidance or contraception.
 
 ## Subprojects
 
-### 1. [Period Tracker CLI](file:///c:/Users/Neha/Documents/Programming/Period%20Tracker/Period%20Tracker%20CLI/README.md)
+### Period Tracker CLI
 
-- **Tech Stack**: Python 3.13+, Typer, SQLModel, Alembic, PostgreSQL, Rich
-- **Features**:
-  - Add, view, and update period records.
-  - Formatted tabular terminal output with color-coded period and cycle lengths.
-  - Yearly and recent record filtering.
-  - Automatic migration management via Alembic.
+Built with Python, Typer, SQLModel, Alembic, and PostgreSQL. Follow the
+[CLI setup and usage guide](Period%20Tracker%20CLI/README.md).
 
-See the [CLI README](file:///c:/Users/Neha/Documents/Programming/Period%20Tracker/Period%20Tracker%20CLI/README.md) for database configuration and usage instructions.
+### Period Tracker Android
 
-### 2. [Period Tracker Android](file:///c:/Users/Neha/Documents/Programming/Period%20Tracker/Period%20Tracker%20Android/README.md)
-
-- **Tech Stack**: React Native 0.86, Expo 57, TypeScript, Expo SQLite
-- **Features**:
-  - Fully local, offline-first storage (`period-tracker.db` SQLite).
-  - Native date pickers for logging and editing periods.
-  - Summary cards displaying average period length and average cycle length.
-  - History view with yearly and recent filters.
-  - Customizable theme (System, Light, Dark) and personalized greeting.
-
-See the [Android README](file:///c:/Users/Neha/Documents/Programming/Period%20Tracker/Period%20Tracker%20Android/README.md) for instructions on running with Expo Go.
+Built with TypeScript, React Native, and Expo. Follow the
+[Android setup and build guide](Period%20Tracker%20Android/README.md).
