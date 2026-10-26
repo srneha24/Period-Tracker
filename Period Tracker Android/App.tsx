@@ -556,9 +556,8 @@ function TrackerContent() {
         {tab === 'settings' && (
           <>
             <Text style={s.greeting}>Settings</Text>
-            <Text style={s.sub}>Make your tracker feel like yours.</Text>
-            <View style={s.card}>
-              <Text style={s.section}>Your name</Text>
+            <View style={s.settingsCard}>
+              <Text style={s.settingsSection}>Your name</Text>
               <Text style={s.appearanceHelp}>Add a name for your personal welcome.</Text>
               <TextInput
                 accessibilityLabel="Your name"
@@ -1368,6 +1367,7 @@ const makeStyles = (dark: boolean) => {
     sub: { fontSize: 13, color: '#968582', marginTop: 5, marginBottom: 13 },
     helper: { fontSize: 11, color: '#968582', marginTop: -7, marginBottom: 10 },
     section: { fontSize: 17, fontWeight: '700', color: '#503d3a', marginTop: 18, marginBottom: 12 },
+    settingsSection: { fontSize: 17, fontWeight: '700', color: '#503d3a', marginBottom: 12 },
     stats: { flexDirection: 'row', gap: 11, marginTop: 2 },
     stat: { flex: 1, backgroundColor: '#fff', borderRadius: 17, padding: 15, borderWidth: 1, borderColor: '#f2e8e5' },
     statHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
@@ -1423,6 +1423,7 @@ const makeStyles = (dark: boolean) => {
     drop: { fontSize: 15 },
     gestureHelp: { fontSize: 11, lineHeight: 16, color: '#968582', marginTop: 3, marginBottom: 10 },
     card: { backgroundColor: '#fff', borderRadius: 20, padding: 17, marginTop: 13, borderWidth: 1, borderColor: '#f2e8e5' },
+    settingsCard: { backgroundColor: '#fff', borderRadius: 20, padding: 17, paddingTop: 10, marginTop: 18, borderWidth: 1, borderColor: '#f2e8e5' },
     label: { fontSize: 9, letterSpacing: 1.3, fontWeight: '700', color: '#9b8580', marginTop: 10, marginBottom: 7 },
     optional: { color: '#c5b4b0', fontWeight: '500' },
     dateButton: { height: 47, borderRadius: 12, backgroundColor: '#fcf7f5', paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderColor: '#f1e8e5' },
@@ -1511,6 +1512,7 @@ const makeStyles = (dark: boolean) => {
     helper: { ...base.helper, color: '#b6a19d' },
     gestureHelp: { ...base.gestureHelp, color: '#b6a19d' },
     section: txt(base.section),
+    settingsSection: txt(base.settingsSection),
     stat: bg(base.stat),
     statNum: txt(base.statNum),
     statDateNum: txt(base.statDateNum),
@@ -1558,6 +1560,7 @@ const makeStyles = (dark: boolean) => {
     todayDot: { ...base.todayDot, backgroundColor: '#ffb3b3' },
     legendText: { ...base.legendText, color: '#b6a19d' },
     card: bg(base.card),
+    settingsCard: bg(base.settingsCard),
     label: { ...base.label, color: '#c2aaa6' },
     optional: { ...base.optional, color: '#9f8985' },
     dateButton: { ...base.dateButton, backgroundColor: '#1c1719', borderColor: '#403337' },
