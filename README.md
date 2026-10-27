@@ -45,4 +45,5 @@ Built with Python, Typer, SQLModel, Alembic, and PostgreSQL. Follow the
 ### Period Tracker Android
 
 Built with TypeScript, React Native, and Expo. Follow the
-[Android setup and build guide](Period%20Tracker%20Android/README.md).
+[Android setup and build guide](Period%20Tracker%20Android/README.md). APKs can
+also be built and published to GitHub Releases with a version tag.

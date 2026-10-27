@@ -73,3 +73,15 @@ The APK is written to
 `android\app\build\outputs\apk\release\app-release.apk`. The generated
 `android` directory is a build artifact and is not the source of truth for the
 Expo project.
+
+## Build and publish with GitHub Actions
+
+The [Release APK workflow](../.github/workflows/release-apk.yml) builds an
+Android APK for `arm64-v8a` using Node.js 22 and Java 17. To publish a release,
+push a version tag that starts with `v`, such as `v2.0.0`. The workflow creates
+a GitHub Release with generated release notes and attaches an APK named
+`period-tracker-v2.0.0.apk` (with the tag substituted in the filename).
+
+You can also run the workflow manually from the GitHub Actions tab. A manual
+run builds the APK and uploads it as the `period-tracker-apk` workflow
+artifact; it does not create a GitHub Release.
