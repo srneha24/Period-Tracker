@@ -1,0 +1,54 @@
+name: Release APK
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Period Tracker Android
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: Period Tracker Android/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - run: npm ci
+
+      - run: npx expo prebuild --platform android --clean
+
+      - name: Build release APK
+        working-directory: Period Tracker Android/android
+        run: ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a
+
+      - name: Rename APK
+        run: >
+          cp android/app/build/outputs/apk/release/app-release.apk
+          "$RUNNER_TEMP/period-tracker-${{ github.ref_name }}.apk"
+
+      - uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: ${{ runner.temp }}/period-tracker-${{ github.ref_name }}.apk
+          generate_release_notes: true
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        with:
+          name: period-tracker-apk
+          path: Period Tracker Android/android/app/build/outputs/apk/release/app-release.apk
